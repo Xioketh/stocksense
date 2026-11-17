@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = basic errors, I = import sorting, B = common bugs, UP = modern Python syntax
+select = ["E", "F", "I", "B", "UP"]
+# B008: FastAPI uses Depends()/Query() in default arguments on purpose.
+# B904: we raise our own errors from except blocks on purpose.
+ignore = ["B008", "B904"]
+
+[tool.ruff.lint.isort]
+# Our migrations folder is called "alembic" too; tell ruff the package is third-party.
+known-third-party = ["alembic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"

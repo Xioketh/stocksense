@@ -1,0 +1,23 @@
+# Secrets
+.env
+*.json.key
+*-key.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Terraform (Phase 6)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

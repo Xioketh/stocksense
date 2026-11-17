@@ -1,0 +1,10 @@
+# Files that should never be copied into the Docker image
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+tests/
+.env
+.env.*
