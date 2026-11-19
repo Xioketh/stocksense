@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  # Runs on every PR that targets main
+  pull_request:
+    branches: [main]
+  # Lets the deploy workflow (step 4) reuse these exact jobs, so tests are defined once
+  workflow_call:
+
+# PR code is untested code: read-only repo access, and NO id-token,
+# so this workflow can never get Google Cloud credentials.
+permissions:
+  contents: read
+
+# Every "run:" step works inside services/api (like "cd $(API_DIR)" in the Makefile)
+defaults:
+  run:
+    working-directory: services/api
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff (same pinned version as requirements-dev.txt)
+        run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Throwaway Postgres, same settings as db-test in docker-compose.yml
+    services:
+      db-test:
+        image: postgres:16
+        env:
+          POSTGRES_DB: stocksense_test
+          POSTGRES_USER: stocksense
+          POSTGRES_PASSWORD: test-password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U stocksense -d stocksense_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.12 (with pip cache)
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            services/api/requirements.txt
+            services/api/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Migrations match the models (alembic upgrade + check)
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5433"
+          DB_NAME: stocksense_test
+          DB_USER: stocksense
+          DB_PASSWORD: test-password
+          API_KEY: ci-not-a-real-key
+        run: |
+          alembic upgrade head
+          alembic check
+
+      - name: Run tests
+        env:
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: "5433"
+        run: pytest
