@@ -2,7 +2,10 @@ name: Deploy
 
 on:
   push:
-    branches: [main]      # every merged PR
+    branches: [main]      # every merged PR...
+    paths-ignore:         # ...except ones that only touch these files
+      - "**.md"
+      - "ops/**"
   workflow_dispatch:       # manual re-deploy button
 
 permissions:
