@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -45,6 +46,63 @@ class StockOutResponse(BaseModel):
     old_qty: int
     new_qty: int
     low_stock: bool
+
+
+InvoiceStatus = Literal["pending_upload", "uploaded", "processing", "processed", "failed"]
+InvoiceContentType = Literal["application/pdf", "image/jpeg", "image/png"]
+
+
+class UploadUrlRequest(BaseModel):
+    """Body for POST /invoices/upload-url."""
+
+    filename: str = Field(min_length=1, max_length=255, examples=["supplier-invoice-0042.pdf"])
+    content_type: InvoiceContentType = Field(examples=["application/pdf"])
+
+
+class UploadUrlResponse(BaseModel):
+    invoice_id: int
+    upload_url: str
+    method: Literal["PUT"] = "PUT"
+    headers: dict[str, str]  # send these exact headers with the upload, or it fails
+    expires_at: datetime
+
+
+class InvoiceItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    raw_name: str
+    qty: int
+    matched_product_id: int | None
+    status: Literal["matched", "needs_review"]
+
+
+class InvoiceOut(BaseModel):
+    """An invoice in a list (without its items)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: InvoiceStatus
+    original_filename: str
+    content_type: str
+    error_message: str | None
+    created_at: datetime
+    uploaded_at: datetime | None
+    processed_at: datetime | None
+
+
+class InvoiceDetail(InvoiceOut):
+    """One invoice with the items the AI found (empty until Phase 4)."""
+
+    items: list[InvoiceItemOut]
+
+
+class InvoiceList(BaseModel):
+    items: list[InvoiceOut]
+    total: int
+    limit: int
+    offset: int
 
 
 class ErrorResponse(BaseModel):
