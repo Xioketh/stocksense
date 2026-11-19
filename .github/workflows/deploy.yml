@@ -5,12 +5,6 @@ on:
     branches: [main]      # every merged PR
   workflow_dispatch:       # manual re-deploy button
 
-# One deploy at a time. Never cancel a deploy halfway through
-# (e.g. after the migration but before the new revision).
-concurrency:
-  group: deploy-dev
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -20,21 +14,29 @@ jobs:
     name: ci
     uses: ./.github/workflows/ci.yml
 
-  # 2) Build, push, migrate, deploy
+  # 2) Build once, push, migrate, deploy to DEV (automatic)
   deploy-dev:
     name: deploy-dev
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    # One dev deploy at a time; never cancel one halfway through
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+
     environment:
       name: dev
       url: ${{ steps.url.outputs.url }}
 
-    # Only this job may request a GitHub OIDC token -> log in as cicd-sa
     permissions:
       contents: read
       id-token: write
+
+    # Hand the exact image name to the prod job
+    outputs:
+      image: ${{ steps.image.outputs.image }}
 
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -65,10 +67,72 @@ jobs:
       - name: Push image
         run: docker push "${IMAGE}"
 
+      - name: Record image for promotion
+        id: image
+        run: echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
       - name: Point the migration job at the new image
         run: gcloud run jobs update "${MIGRATE_JOB}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
 
       - name: Run database migrations (fails if Cloud SQL is stopped)
+        run: gcloud run jobs execute "${MIGRATE_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --wait
+
+      - name: Deploy new API revision
+        run: gcloud run deploy "${API_SERVICE}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+
+      - name: Get service URL
+        id: url
+        run: echo "url=$(gcloud run services describe "${API_SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test /health/ready
+        run: curl --fail --silent --show-error --max-time 20 --retry 3 --retry-delay 5 "${{ steps.url.outputs.url }}/health/ready"
+
+  # 3) Promote the SAME image to PROD (waits for your approval)
+  deploy-prod:
+    name: deploy-prod
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+
+    # Required reviewer -> job pauses here until you click Approve.
+    # This also makes the OIDC subject "repo:Xioketh/stocksense:environment:prod",
+    # the ONLY identity prod WIF trusts.
+    environment:
+      name: prod
+      url: ${{ steps.url.outputs.url }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      API_SERVICE: ${{ vars.API_SERVICE }}
+      MIGRATE_JOB: ${{ vars.MIGRATE_JOB }}
+      IMAGE: ${{ needs.deploy-dev.outputs.image }}
+
+    steps:
+      - name: Authenticate to Google Cloud (prod WIF, no keys)
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.CICD_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Show what is being promoted
+        run: echo "Promoting ${IMAGE} (already deployed and smoke-tested in dev) to ${PROJECT_ID}"
+
+      - name: Point the migration job at the image
+        run: gcloud run jobs update "${MIGRATE_JOB}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+
+      - name: Run database migrations (fails if prod Cloud SQL is stopped)
         run: gcloud run jobs execute "${MIGRATE_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --wait
 
       - name: Deploy new API revision
