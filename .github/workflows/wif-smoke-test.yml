@@ -1,0 +1,50 @@
+name: WIF smoke test
+
+# Manual trigger only: Actions tab -> "WIF smoke test" -> Run workflow
+on:
+  workflow_dispatch:
+
+# Least privilege for the GITHUB_TOKEN:
+# - contents: read  -> read the repo (nothing else)
+# - id-token: write -> allow this job to request GitHub's OIDC token (needed for WIF)
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: stocksense-dev-kr84
+  WIF_PROVIDER: projects/128654128194/locations/global/workloadIdentityPools/github/providers/stocksense-repo
+  CICD_SA: cicd-sa@stocksense-dev-kr84.iam.gserviceaccount.com
+  AR_REPO: asia-south1-docker.pkg.dev/stocksense-dev-kr84/stocksense
+
+jobs:
+  whoami:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Authenticate to Google Cloud (WIF, no keys)
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.CICD_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Who am I?
+        run: gcloud auth list
+
+      - name: Positive test - list images (allowed by Artifact Registry Writer)
+        run: gcloud artifacts docker images list "${AR_REPO}" --include-tags
+
+      - name: Negative test - listing secrets must be DENIED
+        run: |
+          if out=$(gcloud secrets list --project="${PROJECT_ID}" 2>&1); then
+            echo "::error::cicd-sa can list secrets - permissions are too broad!"
+            exit 1
+          else
+            echo "$out" | head -n 3
+            echo "OK: secrets list denied, as expected (least privilege works)"
+          fi
