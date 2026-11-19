@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from app.config import get_settings
 from app.errors import register_error_handlers
 from app.logging_config import setup_logging
-from app.routers import health, products, stock
+from app.routers import health, invoices, products, stock
 
 settings = get_settings()
 setup_logging(settings.log_level)
@@ -22,5 +22,6 @@ register_error_handlers(app)
 app.include_router(health.router)
 app.include_router(products.router)
 app.include_router(stock.router)
+app.include_router(invoices.router)
 
 logger.info("app started", extra={"app_env": settings.app_env})

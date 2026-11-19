@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"            # so you can connect from your laptop (psql, DBeaver)
+      - "5434:5432"            # laptop port 5434 (5432 is taken by a native Windows Postgres)
     volumes:
       - pgdata:/var/lib/postgresql/data   # data survives "docker compose down"
     healthcheck:

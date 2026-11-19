@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +32,15 @@ class Settings(BaseSettings):
 
     # API key that clients send in the X-API-Key header.
     api_key: SecretStr
+
+    # Invoice uploads (Cloud Storage signed URLs).
+    # "fake" = no Google Cloud needed (local dev + tests); "gcs" = real signed URLs.
+    # These have defaults on purpose: the migration job uses the same image and
+    # settings, and it must keep working without any storage variables.
+    storage_backend: Literal["gcs", "fake"] = "fake"
+    invoices_bucket: str = ""
+    upload_url_ttl_seconds: int = Field(default=900, ge=60, le=3600)  # 15 minutes
+    max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1)  # 10 MB
 
     @property
     def database_url(self) -> str:

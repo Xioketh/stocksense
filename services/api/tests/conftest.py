@@ -15,6 +15,9 @@ os.environ["DB_USER"] = "stocksense"
 os.environ["DB_PASSWORD"] = "test-password"
 os.environ["API_KEY"] = "test-api-key"
 os.environ["LOG_LEVEL"] = "WARNING"
+os.environ["APP_ENV"] = "test"
+os.environ["STORAGE_BACKEND"] = "fake"  # never call real Cloud Storage from tests
+os.environ["INVOICES_BUCKET"] = "test-invoices"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -43,7 +46,12 @@ def clean_tables():
     """Empty the tables after every test, so each test starts fresh."""
     yield
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE products, stock_movements RESTART IDENTITY CASCADE"))
+        conn.execute(
+            text(
+                "TRUNCATE products, stock_movements, invoices, invoice_items "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
 
 
 @pytest.fixture
