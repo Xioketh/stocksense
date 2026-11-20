@@ -1,0 +1,16 @@
+{
+  "message": {
+    "attributes": {
+      "eventType": "OBJECT_FINALIZE",
+      "bucketId": "local-invoices",
+      "objectId": "invoices/60ef718cadd148fab78ebd58e9fe4495.pdf",
+      "objectGeneration": "1732071605123456",
+      "payloadFormat": "JSON_API_V1"
+    },
+    "data": "e30=",
+    "messageId": "local-test-1",
+    "publishTime": "2026-11-20T10:25:36.123Z"
+  },
+  "subscription": "projects/local/subscriptions/invoice-uploaded-worker",
+  "deliveryAttempt": 1
+}

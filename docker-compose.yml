@@ -1,4 +1,4 @@
-# Local development environment: Postgres + the API.
+# Local development environment: Postgres + the API + the worker.
 # Docker Compose automatically reads variables from the .env file in this folder.
 
 services:
@@ -51,6 +51,25 @@ services:
     volumes:
       - ./services/api/app:/app/app
       - ./services/api/alembic:/app/alembic
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+
+  # The worker. Locally there is no Pub/Sub, so you play Pub/Sub yourself:
+  # POST a sample envelope to http://localhost:8001/pubsub/invoice-uploaded
+  worker:
+    build:
+      context: ./services/worker
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      INVOICES_BUCKET: local-invoices   # matches the API's fake signer bucket
+    ports:
+      - "8001:8080"            # laptop port 8001 (the API uses 8000)
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./services/worker/app:/app/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 
 volumes:

@@ -4,7 +4,7 @@ on:
   # Runs on every PR that targets main
   pull_request:
     branches: [main]
-  # Lets the deploy workflow (step 4) reuse these exact jobs, so tests are defined once
+  # Lets the deploy workflow reuse these exact jobs, so tests are defined once
   workflow_call:
 
 # PR code is untested code: read-only repo access, and NO id-token,
@@ -12,11 +12,9 @@ on:
 permissions:
   contents: read
 
-# Every "run:" step works inside services/api (like "cd $(API_DIR)" in the Makefile)
-defaults:
-  run:
-    working-directory: services/api
-
+# The job names "lint" and "test" are REQUIRED status checks in the
+# "protect-main" ruleset. Keep these names, or PRs can never be merged.
+# Each job checks BOTH services, one after the other.
 jobs:
   lint:
     name: lint
@@ -32,20 +30,27 @@ jobs:
           python-version: "3.12"
 
       - name: Install ruff (same pinned version as requirements-dev.txt)
-        run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+        run: pip install "$(grep '^ruff==' services/api/requirements-dev.txt)"
 
-      - name: Ruff lint
-        run: ruff check --output-format=github .
+      - name: Ruff (api)
+        working-directory: services/api
+        run: |
+          ruff check --output-format=github .
+          ruff format --check .
 
-      - name: Ruff format check
-        run: ruff format --check .
+      - name: Ruff (worker)
+        working-directory: services/worker
+        run: |
+          ruff check --output-format=github .
+          ruff format --check .
 
   test:
     name: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    # Throwaway Postgres, same settings as db-test in docker-compose.yml
+    # Throwaway Postgres, same settings as db-test in docker-compose.yml.
+    # The worker's tests create their own database (stocksense_worker_test) on it.
     services:
       db-test:
         image: postgres:16
@@ -61,6 +66,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+    env:
+      TEST_DB_HOST: localhost
+      TEST_DB_PORT: "5433"
+
     steps:
       - name: Check out code
         uses: actions/checkout@v7
@@ -73,11 +82,16 @@ jobs:
           cache-dependency-path: |
             services/api/requirements.txt
             services/api/requirements-dev.txt
+            services/worker/requirements.txt
+            services/worker/requirements-dev.txt
 
-      - name: Install dependencies
+      # ---------- api ----------
+      - name: Install dependencies (api)
+        working-directory: services/api
         run: pip install -r requirements-dev.txt
 
       - name: Migrations match the models (alembic upgrade + check)
+        working-directory: services/api
         env:
           DB_HOST: localhost
           DB_PORT: "5433"
@@ -89,8 +103,15 @@ jobs:
           alembic upgrade head
           alembic check
 
-      - name: Run tests
-        env:
-          TEST_DB_HOST: localhost
-          TEST_DB_PORT: "5433"
+      - name: Run tests (api)
+        working-directory: services/api
+        run: pytest
+
+      # ---------- worker ----------
+      - name: Install dependencies (worker)
+        working-directory: services/worker
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests (worker)
+        working-directory: services/worker
         run: pytest
