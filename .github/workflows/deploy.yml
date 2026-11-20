@@ -17,7 +17,7 @@ jobs:
     name: ci
     uses: ./.github/workflows/ci.yml
 
-  # 2) Build once, push, migrate, deploy to DEV (automatic)
+  # 2) Build both images once, push, migrate, deploy both services to DEV (automatic)
   deploy-dev:
     name: deploy-dev
     needs: ci
@@ -37,16 +37,19 @@ jobs:
       contents: read
       id-token: write
 
-    # Hand the exact image name to the prod job
+    # Hand the exact image names to the prod job
     outputs:
-      image: ${{ steps.image.outputs.image }}
+      api_image: ${{ steps.images.outputs.api_image }}
+      worker_image: ${{ steps.images.outputs.worker_image }}
 
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       API_SERVICE: ${{ vars.API_SERVICE }}
+      WORKER_SERVICE: ${{ vars.WORKER_SERVICE }}
       MIGRATE_JOB: ${{ vars.MIGRATE_JOB }}
-      IMAGE: ${{ vars.AR_REPO }}/api:${{ github.sha }}
+      API_IMAGE: ${{ vars.AR_REPO }}/api:${{ github.sha }}
+      WORKER_IMAGE: ${{ vars.AR_REPO }}/worker:${{ github.sha }}
 
     steps:
       - name: Check out code
@@ -64,24 +67,30 @@ jobs:
       - name: Let Docker push to Artifact Registry
         run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
-      - name: Build image (tag = commit SHA)
-        run: docker build -t "${IMAGE}" services/api
+      - name: Build images (tag = commit SHA)
+        run: |
+          docker build -t "${API_IMAGE}" services/api
+          docker build -t "${WORKER_IMAGE}" services/worker
 
-      - name: Push image
-        run: docker push "${IMAGE}"
+      - name: Push images
+        run: |
+          docker push "${API_IMAGE}"
+          docker push "${WORKER_IMAGE}"
 
-      - name: Record image for promotion
-        id: image
-        run: echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+      - name: Record images for promotion
+        id: images
+        run: |
+          echo "api_image=${API_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "worker_image=${WORKER_IMAGE}" >> "$GITHUB_OUTPUT"
 
-      - name: Point the migration job at the new image
-        run: gcloud run jobs update "${MIGRATE_JOB}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+      - name: Point the migration job at the new API image
+        run: gcloud run jobs update "${MIGRATE_JOB}" --image="${API_IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
 
       - name: Run database migrations (fails if Cloud SQL is stopped)
         run: gcloud run jobs execute "${MIGRATE_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --wait
 
       - name: Deploy new API revision
-        run: gcloud run deploy "${API_SERVICE}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+        run: gcloud run deploy "${API_SERVICE}" --image="${API_IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
 
       - name: Get service URL
         id: url
@@ -90,7 +99,13 @@ jobs:
       - name: Smoke test /health/ready
         run: curl --fail --silent --show-error --max-time 20 --retry 3 --retry-delay 5 "${{ steps.url.outputs.url }}/health/ready"
 
-  # 3) Promote the SAME image to PROD (waits for your approval)
+      # The worker is internal-only, so a runner on the internet can't call it.
+      # "gcloud run deploy" waits until the new revision is Ready and fails if
+      # it can't start (e.g. a missing setting), so that is our check.
+      - name: Deploy new worker revision
+        run: gcloud run deploy "${WORKER_SERVICE}" --image="${WORKER_IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+
+  # 3) Promote the SAME images to PROD (waits for your approval)
   deploy-prod:
     name: deploy-prod
     needs: deploy-dev
@@ -116,8 +131,10 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       API_SERVICE: ${{ vars.API_SERVICE }}
+      WORKER_SERVICE: ${{ vars.WORKER_SERVICE }}
       MIGRATE_JOB: ${{ vars.MIGRATE_JOB }}
-      IMAGE: ${{ needs.deploy-dev.outputs.image }}
+      API_IMAGE: ${{ needs.deploy-dev.outputs.api_image }}
+      WORKER_IMAGE: ${{ needs.deploy-dev.outputs.worker_image }}
 
     steps:
       - name: Authenticate to Google Cloud (prod WIF, no keys)
@@ -130,16 +147,19 @@ jobs:
         uses: google-github-actions/setup-gcloud@v3
 
       - name: Show what is being promoted
-        run: echo "Promoting ${IMAGE} (already deployed and smoke-tested in dev) to ${PROJECT_ID}"
+        run: |
+          echo "Promoting to ${PROJECT_ID} (already deployed in dev):"
+          echo "  api:    ${API_IMAGE}"
+          echo "  worker: ${WORKER_IMAGE}"
 
-      - name: Point the migration job at the image
-        run: gcloud run jobs update "${MIGRATE_JOB}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+      - name: Point the migration job at the API image
+        run: gcloud run jobs update "${MIGRATE_JOB}" --image="${API_IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
 
       - name: Run database migrations (fails if prod Cloud SQL is stopped)
         run: gcloud run jobs execute "${MIGRATE_JOB}" --region="${REGION}" --project="${PROJECT_ID}" --wait
 
       - name: Deploy new API revision
-        run: gcloud run deploy "${API_SERVICE}" --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
+        run: gcloud run deploy "${API_SERVICE}" --image="${API_IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
 
       - name: Get service URL
         id: url
@@ -147,3 +167,6 @@ jobs:
 
       - name: Smoke test /health/ready
         run: curl --fail --silent --show-error --max-time 20 --retry 3 --retry-delay 5 "${{ steps.url.outputs.url }}/health/ready"
+
+      - name: Deploy new worker revision
+        run: gcloud run deploy "${WORKER_SERVICE}" --image="${WORKER_IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" --quiet
