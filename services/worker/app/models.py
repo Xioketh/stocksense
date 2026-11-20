@@ -1,4 +1,3 @@
-
 """The worker's view of the shared database.
 
 The API OWNS the schema: its Alembic migrations create and change these

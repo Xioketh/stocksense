@@ -1,4 +1,3 @@
-
 """Shapes of the data the worker receives.
 
 Pub/Sub push wraps every message in an "envelope" (a JSON body):
