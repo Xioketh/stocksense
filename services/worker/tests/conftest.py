@@ -3,9 +3,18 @@
 The worker gets its OWN test database (stocksense_worker_test) on the same
 db-test container, so its tests and the API's tests never touch each
 other's tables.
+
+The API OWNS the schema, so this database is built by running the API's
+real Alembic migrations, NOT create_all() on the worker's small models.
+That way the tests see exactly the tables production has: every column,
+every NOT NULL, CHECK and UNIQUE constraint. If an API migration ever
+breaks the worker, these tests fail in CI before anything is deployed.
 """
 
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 TEST_DB_HOST = os.getenv("TEST_DB_HOST", "localhost")
 TEST_DB_PORT = os.getenv("TEST_DB_PORT", "5433")
@@ -25,9 +34,17 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 
-from app.db import Base, SessionLocal, engine  # noqa: E402
+from app.db import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Invoice  # noqa: E402
+from tests.factories import insert_invoice  # noqa: E402
+
+# services/worker/tests/conftest.py -> parents[2] is services/
+API_DIR = Path(__file__).resolve().parents[2] / "api"
+
+# Every table the app uses. NOT alembic_version: that one records which
+# migrations ran, and emptying it would make the schema look un-migrated.
+APP_TABLES = "products, stock_movements, invoices, invoice_items"
 
 
 def _create_test_database_if_missing() -> None:
@@ -45,20 +62,53 @@ def _create_test_database_if_missing() -> None:
     admin.dispose()
 
 
+def _reset_schema() -> None:
+    """Delete every table (including alembic_version), so migrations start from zero."""
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+
+
+def _run_api_migrations() -> None:
+    """Run 'alembic upgrade head' from services/api against the worker's test database.
+
+    It runs as a SEPARATE process on purpose: the API and the worker both
+    have a package called "app", so the API's migration code can't be
+    imported into this (the worker's) Python process.
+    """
+    env = {
+        **os.environ,  # DB_HOST, DB_NAME, ... set above -> the worker's test database
+        "API_KEY": "not-used-by-migrations",  # the API's settings require it
+    }
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=API_DIR,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.exit(f"API migrations failed:\n{result.stderr}", returncode=1)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def create_tables():
+    # Safety check: refuse to wipe anything that isn't a test database.
+    assert engine.url.database.endswith("_test"), "Tests must use a *_test database!"
     _create_test_database_if_missing()
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)  # only the columns the worker maps
+    _reset_schema()
+    _run_api_migrations()
     yield
-    Base.metadata.drop_all(engine)
+    # No teardown: the tables stay, so you can inspect them with psql
+    # after a failing run. The next run resets the schema anyway.
 
 
 @pytest.fixture(autouse=True)
 def clean_tables():
+    """Empty the tables after every test, so each test starts fresh."""
     yield
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE invoices RESTART IDENTITY"))
+        conn.execute(text(f"TRUNCATE {APP_TABLES} RESTART IDENTITY CASCADE"))
 
 
 @pytest.fixture
@@ -71,8 +121,6 @@ def client() -> TestClient:
 @pytest.fixture
 def pending_invoice() -> Invoice:
     """An invoice row like the API creates in POST /invoices/upload-url."""
+    invoice_id = insert_invoice(gcs_path="invoices/abc123.pdf", status="pending_upload")
     with SessionLocal() as db:
-        invoice = Invoice(gcs_path="invoices/abc123.pdf", status="pending_upload")
-        db.add(invoice)
-        db.commit()
-        return invoice
+        return db.get(Invoice, invoice_id)
