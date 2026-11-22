@@ -1,6 +1,38 @@
 """Helpers that build test data. (Kept out of conftest.py on purpose:
 conftest is for fixtures, and importing from it is a known pytest gotcha.)"""
 
+from sqlalchemy import text
+
+from app.db import engine
+
+
+def insert_invoice(
+    gcs_path: str = "invoices/abc123.pdf",
+    status: str = "pending_upload",
+    original_filename: str = "supplier-invoice.pdf",
+    content_type: str = "application/pdf",
+) -> int:
+    """Insert an invoice row the way the API does (POST /invoices/upload-url).
+
+    Raw SQL on purpose: the worker's Invoice model maps only the columns
+    the worker uses, but the real table also has NOT NULL columns the
+    worker never touches (original_filename, content_type).
+    """
+    with engine.begin() as conn:
+        return conn.scalar(
+            text(
+                "INSERT INTO invoices (gcs_path, original_filename, content_type, status) "
+                "VALUES (:gcs_path, :original_filename, :content_type, :status) "
+                "RETURNING id"
+            ),
+            {
+                "gcs_path": gcs_path,
+                "original_filename": original_filename,
+                "content_type": content_type,
+                "status": status,
+            },
+        )
+
 
 def make_envelope(
     object_id: str = "invoices/abc123.pdf",

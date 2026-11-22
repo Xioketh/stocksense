@@ -1,5 +1,7 @@
 # Development + test tools (NOT installed in the production image)
 -r requirements.txt
+# Only for tests: conftest runs the API's Alembic migrations (same version as the API).
+alembic==1.20.1
 pytest==9.2.0
 httpx2==2.16.2
 ruff==0.17.5
