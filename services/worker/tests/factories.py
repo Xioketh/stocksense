@@ -34,6 +34,18 @@ def insert_invoice(
         )
 
 
+def insert_product(sku: str, qty: int, name: str | None = None) -> int:
+    """Insert a product the way POST /products does."""
+    with engine.begin() as conn:
+        return conn.scalar(
+            text(
+                "INSERT INTO products (sku, name, qty, low_stock_threshold) "
+                "VALUES (:sku, :name, :qty, 5) RETURNING id"
+            ),
+            {"sku": sku, "name": name or sku, "qty": qty},
+        )
+
+
 def make_envelope(
     object_id: str = "invoices/abc123.pdf",
     event_type: str = "OBJECT_FINALIZE",
