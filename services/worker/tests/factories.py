@@ -51,6 +51,7 @@ def make_envelope(
     event_type: str = "OBJECT_FINALIZE",
     bucket_id: str = "test-invoices",
     message_id: str = "1001",
+    delivery_attempt: int = 1,
 ) -> dict:
     """Build a request body exactly like a Pub/Sub push delivery."""
     return {
@@ -67,5 +68,5 @@ def make_envelope(
             "publishTime": "2026-11-20T10:25:36.123Z",
         },
         "subscription": "projects/test/subscriptions/invoice-uploaded-worker",
-        "deliveryAttempt": 1,
+        "deliveryAttempt": delivery_attempt,
     }
