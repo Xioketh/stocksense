@@ -31,6 +31,16 @@ class Settings(BaseSettings):
     # The only bucket we accept events from. Required: a worker that
     # doesn't know its bucket is misconfigured, so it should not start.
     invoices_bucket: str = Field(min_length=1)
+    # "fake" = no Google Cloud (local dev + tests); "gcs" = read the real bucket.
+    # Same name and values as the API's STORAGE_BACKEND.
+    storage_backend: Literal["gcs", "fake"] = "fake"
+    # Must match the API's MAX_UPLOAD_BYTES (the signed URL's size limit).
+    max_invoice_bytes: int = Field(default=10 * 1024 * 1024, gt=0)
+
+    # How long a claimed invoice belongs to one worker. MUST be longer than the
+    # Cloud Run request timeout (300 s): once a lease is older than this, the
+    # request that took it has certainly been stopped, so another may take over.
+    processing_lease_seconds: int = Field(default=600, ge=301)
 
     # ---------- Invoice extraction (Gemini on Vertex AI) ----------
     # "fake" = a canned answer, no Google Cloud (local dev + tests).

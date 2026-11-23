@@ -5,6 +5,8 @@ sqlalchemy==2.1.9
 psycopg[binary]==3.3.9
 pydantic==2.14.3
 pydantic-settings==2.16.3
+# Download invoices from the bucket (same version as the API).
+google-cloud-storage==3.17.1
 # Gemini on Vertex AI (invoice extraction). It also installs httpx2, which
 # app/extraction/gemini.py imports to recognise timeouts.
 google-genai==3.6.1
