@@ -5,3 +5,5 @@ alembic==1.20.1
 pytest==9.2.0
 httpx2==2.16.2
 ruff==0.17.5
+# Only for samples/make_sample_invoices.py (creates test PDFs).
+fpdf2==2.9.0
