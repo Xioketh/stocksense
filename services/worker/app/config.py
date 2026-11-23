@@ -60,24 +60,6 @@ class Settings(BaseSettings):
     gemini_timeout_seconds: int = Field(default=45, ge=5, le=120)
     gemini_max_attempts: int = Field(default=3, ge=1, le=5)
 
-    # ---------- Invoice extraction (Gemini on Vertex AI) ----------
-    # "fake" = a canned answer, no Google Cloud (local dev + tests).
-    # "gemini" = the real model. Defaults keep today's deploys working:
-    # nothing calls the extractor until the processing step is wired in.
-    extractor_backend: Literal["gemini", "fake"] = "fake"
-    # The project that is billed for Gemini calls. Required for "gemini".
-    # (Cloud Run does NOT set this automatically, so we set it ourselves.)
-    google_cloud_project: str = ""
-    # "global": current Gemini models aren't offered pay-as-you-go in asia-south1.
-    gemini_location: str = "global"
-    gemini_model: str = "gemini-3.5-flash"
-    # Reading an invoice needs little reasoning; less thinking = cheaper + faster.
-    gemini_thinking_level: Literal["minimal", "low", "medium", "high"] = "low"
-    # Time budget per call x attempts must stay well under the 300 s ack deadline:
-    # 45 s x 3 attempts + backoff waits ~= 150 s at worst.
-    gemini_timeout_seconds: int = Field(default=45, ge=5, le=120)
-    gemini_max_attempts: int = Field(default=3, ge=1, le=5)
-
     @property
     def database_url(self) -> str:
         password = self.db_password.get_secret_value()
