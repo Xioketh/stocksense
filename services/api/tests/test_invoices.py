@@ -75,11 +75,19 @@ def test_invoice_detail_includes_items(client, rice):
             content_type="application/pdf",
             status="processed",
         )
+        # Saved in the "wrong" order on purpose: the API must sort by line_no.
         invoice.items = [
             InvoiceItem(
-                raw_name="Rice 5kg", qty=20, matched_product_id=rice["id"], status="matched"
+                line_no=2, raw_sku="COCO-750", raw_name="Coconut oil", qty=10, status="needs_review"
             ),
-            InvoiceItem(raw_name="Coconut oil", qty=10, status="needs_review"),
+            InvoiceItem(
+                line_no=1,
+                raw_sku="RICE-5",
+                raw_name="Rice 5kg",
+                qty=20,
+                matched_product_id=rice["id"],
+                status="matched",
+            ),
         ]
         db.add(invoice)
         db.commit()
@@ -87,9 +95,10 @@ def test_invoice_detail_includes_items(client, rice):
 
     body = client.get(f"/invoices/{invoice_id}").json()
 
-    assert [(i["raw_name"], i["status"]) for i in body["items"]] == [
-        ("Rice 5kg", "matched"),
-        ("Coconut oil", "needs_review"),
+    assert body["attempts"] == 0
+    assert [(i["line_no"], i["raw_sku"], i["status"]) for i in body["items"]] == [
+        (1, "RICE-5", "matched"),
+        (2, "COCO-750", "needs_review"),
     ]
 
 
