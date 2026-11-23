@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -42,6 +50,14 @@ class StockMovement(Base):
         CheckConstraint(
             "(reason = 'invoice') = (invoice_id IS NOT NULL)", name="ck_movements_invoice_link"
         ),
+        # Same rule for the invoice LINE that caused the movement.
+        CheckConstraint(
+            "(reason = 'invoice') = (invoice_item_id IS NOT NULL)",
+            name="ck_movements_invoice_item_link",
+        ),
+        # Idempotency safety net: one invoice line can change stock at most ONCE.
+        # (Many NULLs are allowed, so sales are not affected.)
+        UniqueConstraint("invoice_item_id", name="uq_stock_movements_invoice_item"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -49,6 +65,7 @@ class StockMovement(Base):
     change: Mapped[int] = mapped_column(Integer)  # negative for sales, positive for invoices
     reason: Mapped[str] = mapped_column(String(20))
     invoice_id: Mapped[int | None] = mapped_column(ForeignKey("invoices.id"), index=True)
+    invoice_item_id: Mapped[int | None] = mapped_column(ForeignKey("invoice_items.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     product: Mapped[Product] = relationship(back_populates="movements")
@@ -62,7 +79,10 @@ class Invoice(Base):
                                              \\-> failed
     pending_upload: we gave out a signed URL, but the file isn't in the bucket yet.
     uploaded:       the worker saw the file arrive (Phase 3).
-    processing / processed / failed: Gemini extraction (Phase 4).
+    processing:     a worker claimed it and is extracting (Phase 4).
+                    processing_started_at is the "lease": if that worker
+                    crashes, another one may take over a stale lease.
+    processed / failed: final states (failed always has an error_message).
     """
 
     __tablename__ = "invoices"
@@ -70,6 +90,15 @@ class Invoice(Base):
         CheckConstraint(
             "status IN ('pending_upload', 'uploaded', 'processing', 'processed', 'failed')",
             name="ck_invoices_status",
+        ),
+        CheckConstraint("attempts >= 0", name="ck_invoices_attempts_non_negative"),
+        CheckConstraint(
+            "status <> 'processing' OR processing_started_at IS NOT NULL",
+            name="ck_invoices_processing_has_lease",
+        ),
+        CheckConstraint(
+            "status <> 'failed' OR error_message IS NOT NULL",
+            name="ck_invoices_failed_has_error",
         ),
     )
 
@@ -84,9 +113,11 @@ class Invoice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     uploaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     items: Mapped[list["InvoiceItem"]] = relationship(
-        back_populates="invoice", order_by="InvoiceItem.id"
+        back_populates="invoice", order_by="InvoiceItem.line_no"
     )
 
 
@@ -102,10 +133,15 @@ class InvoiceItem(Base):
             "(status = 'matched') = (matched_product_id IS NOT NULL)",
             name="ck_invoice_items_match_link",
         ),
+        CheckConstraint("line_no > 0", name="ck_invoice_items_line_no_positive"),
+        # The same invoice line can never be saved twice.
+        UniqueConstraint("invoice_id", "line_no", name="uq_invoice_items_invoice_line"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[int] = mapped_column(ForeignKey("invoices.id"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer)  # 1, 2, 3... position on the invoice
+    raw_sku: Mapped[str | None] = mapped_column(String(64))  # SKU as read, may be missing
     raw_name: Mapped[str] = mapped_column(String(200))  # exactly what the invoice said
     qty: Mapped[int] = mapped_column(Integer)
     matched_product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"))

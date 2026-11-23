@@ -71,6 +71,8 @@ class InvoiceItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    line_no: int
+    raw_sku: str | None
     raw_name: str
     qty: int
     matched_product_id: int | None
@@ -87,6 +89,7 @@ class InvoiceOut(BaseModel):
     original_filename: str
     content_type: str
     error_message: str | None
+    attempts: int
     created_at: datetime
     uploaded_at: datetime | None
     processed_at: datetime | None
