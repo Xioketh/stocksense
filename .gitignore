@@ -21,3 +21,7 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+
+# Sample invoices (rebuild with: python samples/make_sample_invoices.py)
+services/worker/samples/invoices/
