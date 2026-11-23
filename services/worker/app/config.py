@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Cloud Run request timeout (300 s): once a lease is older than this, the
     # request that took it has certainly been stopped, so another may take over.
     processing_lease_seconds: int = Field(default=600, ge=301)
+    # Must match the push subscription's --max-delivery-attempts (5). On that
+    # delivery Pub/Sub won't try again, so a temporary error marks the
+    # invoice 'failed' instead of leaving it 'uploaded' forever.
+    max_delivery_attempts: int = Field(default=5, ge=5, le=100)
 
     # ---------- Invoice extraction (Gemini on Vertex AI) ----------
     # "fake" = a canned answer, no Google Cloud (local dev + tests).

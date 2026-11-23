@@ -19,6 +19,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.services.invoice_processing import Result
+
 
 class PubSubMessage(BaseModel):
     message_id: str = Field(alias="messageId")
@@ -43,13 +45,15 @@ class StorageEvent(BaseModel):
 
 
 class Outcome(StrEnum):
-    """What the worker did with one message. Every outcome here is an ACK."""
+    """Step 1 of a message: what happened to the invoice's 'uploaded' status."""
 
     MARKED_UPLOADED = "marked_uploaded"  # first delivery: status changed
-    DUPLICATE = "duplicate"  # already handled before (redelivery)
+    DUPLICATE = "duplicate"  # marked before (a redelivery); processing still decides
     UNKNOWN_OBJECT = "unknown_object"  # no invoice row has this file
     IGNORED = "ignored"  # not an event we care about
 
 
 class PushResult(BaseModel):
     outcome: Outcome
+    # Step 2: what processing did (None when there was no invoice to process).
+    processing: Result | None = None

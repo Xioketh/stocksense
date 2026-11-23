@@ -35,8 +35,11 @@ from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 
 from app.db import SessionLocal, engine  # noqa: E402
+from app.extraction import get_extractor  # noqa: E402
+from app.extraction.fake import FakeExtractor  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Invoice  # noqa: E402
+from app.storage import FakeInvoiceFiles, get_invoice_files  # noqa: E402
 from tests.factories import insert_invoice  # noqa: E402
 
 # services/worker/tests/conftest.py -> parents[2] is services/
@@ -112,10 +115,28 @@ def clean_tables():
 
 
 @pytest.fixture
-def client() -> TestClient:
-    # No API key: on Cloud Run, IAM checks Pub/Sub's identity before
-    # the request ever reaches our code.
-    return TestClient(app)
+def fake_extractor() -> FakeExtractor:
+    """Stands in for Gemini. Answers with Nimal's invoice unless a test changes it."""
+    return FakeExtractor()
+
+
+@pytest.fixture
+def fake_files() -> FakeInvoiceFiles:
+    """Stands in for the bucket: every path returns a small fake PDF."""
+    return FakeInvoiceFiles(default=b"%PDF-1.7 test invoice")
+
+
+@pytest.fixture
+def client(fake_extractor, fake_files):
+    """The worker app, with Gemini and Cloud Storage swapped for fakes.
+
+    No API key: on Cloud Run, IAM checks Pub/Sub's identity before
+    the request ever reaches our code.
+    """
+    app.dependency_overrides[get_extractor] = lambda: fake_extractor
+    app.dependency_overrides[get_invoice_files] = lambda: fake_files
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
