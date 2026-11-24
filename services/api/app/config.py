@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     upload_url_ttl_seconds: int = Field(default=900, ge=60, le=3600)  # 15 minutes
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1)  # 10 MB
 
+    # LowStock events (Pub/Sub). Same idea as STORAGE_BACKEND:
+    # "fake" keeps events in memory (local dev + tests); "pubsub" publishes for real.
+    events_backend: Literal["pubsub", "fake"] = "fake"
+    # The project that owns the topic. Cloud Run does NOT set this for us.
+    google_cloud_project: str = ""
+    low_stock_topic: str = "low-stock"
+    # How long a sale may wait for Pub/Sub to confirm the event.
+    publish_timeout_seconds: float = Field(default=10, gt=0, le=30)
+
     @property
     def database_url(self) -> str:
         password = self.db_password.get_secret_value()

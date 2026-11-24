@@ -8,3 +8,5 @@ pydantic==2.14.3
 pydantic-settings==2.16.3
 google-cloud-storage==3.17.1
 google-auth==2.62.2
+# Publish LowStock events to the "low-stock" topic.
+google-cloud-pubsub==2.44.0
