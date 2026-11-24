@@ -9,6 +9,16 @@ def is_low_stock(qty: int, threshold: int) -> bool:
     return qty < threshold
 
 
+def crossed_into_low_stock(old_qty: int, new_qty: int, threshold: int) -> bool:
+    """True only for the change that takes stock from OK to low.
+
+    Nimal gets ONE email when Rice drops from 6 to 4, not another one for
+    every sale after that while it stays low. After a restock lifts it back
+    above the limit, the next drop alerts again.
+    """
+    return not is_low_stock(old_qty, threshold) and is_low_stock(new_qty, threshold)
+
+
 def apply_sale(current_qty: int, sold_qty: int) -> int:
     """Return the new quantity after a sale, or raise if there isn't enough stock."""
     if sold_qty <= 0:

@@ -7,9 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.errors import ConflictError, NotFoundError
+from app.events import EventPublisher, LowStockEvent
 from app.models import Product, StockMovement
 from app.schemas import ProductCreate, StockOutResponse
-from app.services.stock_rules import apply_sale, is_low_stock
+from app.services.stock_rules import apply_sale, crossed_into_low_stock, is_low_stock
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +42,11 @@ def get_product_by_sku(db: Session, sku: str) -> Product:
     return product
 
 
-def record_sale(db: Session, sku: str, qty: int) -> StockOutResponse:
+def record_sale(db: Session, sku: str, qty: int, publisher: EventPublisher) -> StockOutResponse:
     # with_for_update() locks this product row until we commit.
     # If two sales for the same product arrive at the same time,
     # the second one waits, so stock can't be counted wrong.
+    # (It also means only ONE of them can see the "OK -> low" crossing.)
     product = db.scalar(select(Product).where(Product.sku == sku).with_for_update())
     if product is None:
         raise NotFoundError(f"Product with SKU '{sku}' not found")
@@ -61,16 +63,47 @@ def record_sale(db: Session, sku: str, qty: int) -> StockOutResponse:
     db.add(StockMovement(product_id=product.id, change=-qty, reason="sale"))
     db.commit()
 
-    low = is_low_stock(product.qty, product.low_stock_threshold)
     logger.info(
         "sale recorded",
         extra={"sku": sku, "sold": qty, "old_qty": old_qty, "new_qty": product.qty},
     )
-    if low:
-        # Phase 5: publish a "LowStock" event to Pub/Sub here.
-        logger.warning(
-            "low stock",
-            extra={"sku": sku, "qty": product.qty, "threshold": product.low_stock_threshold},
-        )
 
+    # Publish only AFTER the commit: never announce a sale that was rolled back.
+    if crossed_into_low_stock(old_qty, product.qty, product.low_stock_threshold):
+        _announce_low_stock(publisher, product)
+
+    low = is_low_stock(product.qty, product.low_stock_threshold)
     return StockOutResponse(sku=sku, old_qty=old_qty, new_qty=product.qty, low_stock=low)
+
+
+def _announce_low_stock(publisher: EventPublisher, product: Product) -> None:
+    """Publish a LowStock event. A failure here must NOT fail the sale.
+
+    The sale is already committed. If we returned 500 now, the client would
+    think the sale failed and might send it again -> stock reduced twice.
+    So we log the failure (an alert watches for this log) and still return 200.
+    """
+    event = LowStockEvent(
+        sku=product.sku,
+        name=product.name,
+        qty=product.qty,
+        threshold=product.low_stock_threshold,
+    )
+    log = {"sku": event.sku, "qty": event.qty, "threshold": event.threshold}
+    try:
+        message_id = publisher.publish_low_stock(event)
+    except Exception:
+        logger.exception(
+            "low stock event NOT published",
+            extra={**log, "event": "low_stock_publish_failed", "event_id": event.event_id},
+        )
+        return
+    logger.warning(
+        "low stock",
+        extra={
+            **log,
+            "event": "low_stock_published",
+            "event_id": event.event_id,
+            "message_id": message_id,
+        },
+    )

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.events import EventPublisher, get_event_publisher
 from app.schemas import ErrorResponse, StockOutRequest, StockOutResponse
 from app.security import require_api_key
 from app.services import stock_service
@@ -18,6 +19,13 @@ router = APIRouter(
     response_model=StockOutResponse,
     responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
 )
-def stock_out(data: StockOutRequest, db: Session = Depends(get_db)):
-    """Record a sale: reduce stock for one product."""
-    return stock_service.record_sale(db, sku=data.sku, qty=data.qty)
+def stock_out(
+    data: StockOutRequest,
+    db: Session = Depends(get_db),
+    publisher: EventPublisher = Depends(get_event_publisher),
+):
+    """Record a sale: reduce stock for one product.
+
+    If this sale takes the product below its limit, a LowStock event is published.
+    """
+    return stock_service.record_sale(db, sku=data.sku, qty=data.qty, publisher=publisher)
