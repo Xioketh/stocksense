@@ -117,4 +117,3 @@ def test_fake_publisher_is_refused_on_cloud_run(monkeypatch):
         monkeypatch.undo()
         events.get_settings.cache_clear()
         get_event_publisher.cache_clear()
-        
