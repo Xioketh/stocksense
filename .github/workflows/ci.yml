@@ -3,7 +3,7 @@ name: CI
 on:
   # Runs on every PR that targets main
   pull_request:
-    branches: [main]
+    branches: [main, ai-assistant]
   # Lets the deploy workflow reuse these exact jobs, so tests are defined once
   workflow_call:
 
