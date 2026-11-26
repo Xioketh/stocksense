@@ -13,6 +13,7 @@ from app.schemas import ProductCreate, StockOutResponse
 from app.services.stock_rules import apply_sale, crossed_into_low_stock, is_low_stock
 
 logger = logging.getLogger(__name__)
+LOW_STOCK_SQL = Product.qty < Product.low_stock_threshold
 
 
 def create_product(db: Session, data: ProductCreate) -> Product:
@@ -29,9 +30,19 @@ def create_product(db: Session, data: ProductCreate) -> Product:
     return product
 
 
-def list_products(db: Session, limit: int, offset: int) -> tuple[list[Product], int]:
-    total = db.scalar(select(func.count()).select_from(Product)) or 0
-    items = db.scalars(select(Product).order_by(Product.id).limit(limit).offset(offset)).all()
+def list_products(
+    db: Session, limit: int, offset: int, low_stock: bool | None = None
+) -> tuple[list[Product], int]:
+    """low_stock: None = all products, True = only low, False = only OK."""
+    query = select(Product)
+    count_query = select(func.count()).select_from(Product)
+    if low_stock is not None:
+        condition = LOW_STOCK_SQL if low_stock else ~LOW_STOCK_SQL
+        query = query.where(condition)
+        count_query = count_query.where(condition)
+
+    total = db.scalar(count_query) or 0
+    items = db.scalars(query.order_by(Product.id).limit(limit).offset(offset)).all()
     return list(items), total
 
 

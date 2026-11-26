@@ -110,3 +110,35 @@ class InvoiceList(BaseModel):
 
 class ErrorResponse(BaseModel):
     detail: str
+
+class ReviewItemOut(BaseModel):
+    """One invoice line the AI couldn't match, waiting for the owner to pick a product."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    invoice_id: int
+    line_no: int
+    raw_sku: str | None
+    raw_name: str
+    qty: int
+
+
+class ReviewItemList(BaseModel):
+    items: list[ReviewItemOut]
+    total: int
+    limit: int
+    offset: int
+
+
+class ResolveRequest(BaseModel):
+    """Body for POST /invoices/{invoice_id}/items/{line_no}/resolve."""
+
+    sku: str = Field(min_length=1, max_length=64, examples=["RICE-5"])
+
+
+class ResolveResponse(BaseModel):
+    invoice_id: int
+    line_no: int
+    sku: str
+    added: int  # how much stock this line added
+    new_qty: int  # the product's stock after adding it
