@@ -27,9 +27,12 @@ def create_product(data: ProductCreate, db: Session = Depends(get_db)):
 def list_products(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    low_stock: bool | None = Query(
+        default=None, description="true = only low-stock products, false = only OK ones"
+    ),
     db: Session = Depends(get_db),
 ):
-    items, total = stock_service.list_products(db, limit=limit, offset=offset)
+    items, total = stock_service.list_products(db, limit=limit, offset=offset, low_stock=low_stock)
     return ProductList(
         items=[ProductOut.model_validate(p) for p in items],
         total=total,

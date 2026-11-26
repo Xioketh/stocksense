@@ -8,6 +8,10 @@ from app.schemas import (
     InvoiceList,
     InvoiceOut,
     InvoiceStatus,
+    ResolveRequest,
+    ResolveResponse,
+    ReviewItemList,
+    ReviewItemOut,
     UploadUrlRequest,
     UploadUrlResponse,
 )
@@ -53,6 +57,40 @@ def list_invoices(
         limit=limit,
         offset=offset,
     )
+
+
+# Declared BEFORE "/{invoice_id}" on purpose. FastAPI tries routes in order, so
+# if "/{invoice_id}" came first it would grab "/review-items" and fail with 422
+# ("review-items" is not an int).
+@router.get("/review-items", response_model=ReviewItemList)
+def list_review_items(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Invoice lines the AI couldn't match (status needs_review), across all invoices."""
+    items, total = invoice_service.list_review_items(db, limit=limit, offset=offset)
+    return ReviewItemList(
+        items=[ReviewItemOut.model_validate(i) for i in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/{invoice_id}/items/{line_no}/resolve",
+    response_model=ResolveResponse,
+    responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+def resolve_review_item(
+    invoice_id: int, line_no: int, data: ResolveRequest, db: Session = Depends(get_db)
+):
+    """Match a needs_review line to a product and add its qty to stock (once).
+
+    404: the line or the SKU doesn't exist. 409: the line is already matched.
+    """
+    return invoice_service.resolve_review_item(db, invoice_id, line_no, data.sku)
 
 
 @router.get(

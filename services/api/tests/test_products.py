@@ -66,3 +66,52 @@ def test_health_does_not_need_api_key(anon_client):
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+# ---------- GET /products?low_stock= ----------
+
+
+def make_products(client) -> None:
+    for sku, qty, threshold in [
+        ("RICE-5", 20, 5),  # OK
+        ("SUGAR-1", 4, 5),  # low: 4 < 5
+        ("SALT-1", 5, 5),  # NOT low: equal to the limit
+        ("TEA-1", 0, 0),  # threshold 0 = never alert
+    ]:
+        client.post(
+            "/products",
+            json={"sku": sku, "name": sku, "qty": qty, "low_stock_threshold": threshold},
+        )
+
+
+def test_low_stock_true_returns_only_low_products(client):
+    make_products(client)
+
+    body = client.get("/products", params={"low_stock": "true"}).json()
+
+    assert body["total"] == 1
+    assert [p["sku"] for p in body["items"]] == ["SUGAR-1"]
+
+
+def test_low_stock_false_returns_only_ok_products(client):
+    make_products(client)
+
+    body = client.get("/products", params={"low_stock": "false"}).json()
+
+    assert body["total"] == 3
+    assert [p["sku"] for p in body["items"]] == ["RICE-5", "SALT-1", "TEA-1"]
+
+
+def test_low_stock_filter_agrees_with_is_low_stock(client):
+    # The SQL filter and the Python rule (stock_rules.is_low_stock) must never drift apart.
+    make_products(client)
+
+    for flag in [True, False]:
+        items = client.get("/products", params={"low_stock": str(flag).lower()}).json()["items"]
+        assert all(p["is_low_stock"] is flag for p in items)
+
+
+def test_no_low_stock_param_returns_all_products(client):
+    make_products(client)
+
+    assert client.get("/products").json()["total"] == 4
