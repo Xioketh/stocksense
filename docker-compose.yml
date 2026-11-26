@@ -1,4 +1,4 @@
-# Local development environment: Postgres + the API + the worker.
+# Local development environment: Postgres + the API + the worker + the assistant.
 # Docker Compose automatically reads variables from the .env file in this folder.
 
 services:
@@ -12,6 +12,9 @@ services:
       - "5434:5432"            # laptop port 5434 (5432 is taken by a native Windows Postgres)
     volumes:
       - pgdata:/var/lib/postgresql/data   # data survives "docker compose down"
+      # Creates the assistant's database. Runs ONLY on an empty volume;
+      # for an existing one, run "make assistant-db" once.
+      - ./services/assistant/db-init/01-create-assistant-db.sql:/docker-entrypoint-initdb.d/01-create-assistant-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -70,6 +73,28 @@ services:
         condition: service_healthy
     volumes:
       - ./services/worker/app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+
+  # The AI assistant. It reads and changes stock ONLY by calling the API,
+  # so the API's locking, audit trail and events apply to every agent action.
+  assistant:
+    build:
+      context: ./services/assistant
+    env_file: .env
+    environment:
+      DB_HOST: db                            # its own database, on the same server
+      DB_PORT: "5432"
+      STOCKSENSE_API_URL: http://api:8080    # container-to-container: service name + container port
+      STOCKSENSE_API_KEY: ${API_KEY}         # the same key the API checks, read from .env
+    ports:
+      - "8002:8080"            # laptop port 8002 (api 8000, worker 8001)
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - ./services/assistant/app:/app/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 
 volumes:

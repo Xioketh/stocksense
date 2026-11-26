@@ -1,0 +1,13 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = basic errors, I = import sorting, B = common bugs, UP = modern Python syntax
+select = ["E", "F", "I", "B", "UP"]
+# B008: FastAPI uses Depends() in default arguments on purpose.
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"

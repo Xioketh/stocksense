@@ -1,0 +1,6 @@
+# Runtime dependencies (installed in the Docker image).
+# Same pins as the api and worker. LangChain/LangGraph arrive in A3, when they're first used.
+fastapi==0.163.1
+uvicorn[standard]==0.54.0
+pydantic==2.14.3
+pydantic-settings==2.16.3

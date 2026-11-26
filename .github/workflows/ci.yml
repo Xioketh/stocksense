@@ -14,7 +14,7 @@ permissions:
 
 # The job names "lint" and "test" are REQUIRED status checks in the
 # "protect-main" ruleset. Keep these names, or PRs can never be merged.
-# Each job checks BOTH services, one after the other.
+# Each job checks ALL services, one after the other.
 jobs:
   lint:
     name: lint
@@ -40,6 +40,12 @@ jobs:
 
       - name: Ruff (worker)
         working-directory: services/worker
+        run: |
+          ruff check --output-format=github .
+          ruff format --check .
+
+      - name: Ruff (assistant)
+        working-directory: services/assistant
         run: |
           ruff check --output-format=github .
           ruff format --check .
@@ -84,6 +90,8 @@ jobs:
             services/api/requirements-dev.txt
             services/worker/requirements.txt
             services/worker/requirements-dev.txt
+            services/assistant/requirements.txt
+            services/assistant/requirements-dev.txt
 
       # ---------- api ----------
       - name: Install dependencies (api)
@@ -114,4 +122,14 @@ jobs:
 
       - name: Run tests (worker)
         working-directory: services/worker
+        run: pytest
+
+      # ---------- assistant ----------
+      # No database yet; every key in its conftest is fake, so CI needs no secrets.
+      - name: Install dependencies (assistant)
+        working-directory: services/assistant
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests (assistant)
+        working-directory: services/assistant
         run: pytest
