@@ -78,6 +78,7 @@ def get_invoice(db: Session, invoice_id: int) -> Invoice:
         raise NotFoundError(f"Invoice {invoice_id} not found")
     return invoice
 
+
 def list_review_items(db: Session, limit: int, offset: int) -> tuple[list[InvoiceItem], int]:
     """Lines the AI couldn't match, across ALL invoices: newest invoice first."""
     condition = InvoiceItem.status == "needs_review"

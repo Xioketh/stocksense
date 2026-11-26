@@ -58,6 +58,7 @@ def list_invoices(
         offset=offset,
     )
 
+
 # Declared BEFORE "/{invoice_id}" on purpose. FastAPI tries routes in order, so
 # if "/{invoice_id}" came first it would grab "/review-items" and fail with 422
 # ("review-items" is not an int).
@@ -90,6 +91,7 @@ def resolve_review_item(
     404: the line or the SKU doesn't exist. 409: the line is already matched.
     """
     return invoice_service.resolve_review_item(db, invoice_id, line_no, data.sku)
+
 
 @router.get(
     "/{invoice_id}",

@@ -111,6 +111,7 @@ class InvoiceList(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
 
+
 class ReviewItemOut(BaseModel):
     """One invoice line the AI couldn't match, waiting for the owner to pick a product."""
 

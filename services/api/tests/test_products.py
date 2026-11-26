@@ -67,6 +67,7 @@ def test_health_does_not_need_api_key(anon_client):
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
 # ---------- GET /products?low_stock= ----------
 
 
