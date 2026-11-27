@@ -1,6 +1,14 @@
 # Runtime dependencies (installed in the Docker image).
-# Same pins as the api and worker. LangChain/LangGraph arrive in A3, when they're first used.
+# Same pins as the api and worker for the shared packages.
 fastapi==0.163.1
 uvicorn[standard]==0.54.0
 pydantic==2.14.3
 pydantic-settings==2.16.3
+# A3: the agent. LangGraph builds the graph, langchain-core gives messages and @tool,
+# langchain-google-genai talks to Gemini (AI Studio key now, Vertex AI in Phase E).
+# LangSmith tracing comes with langchain-core (it reads the LANGSMITH_* env vars).
+langgraph==1.2.24
+langchain-core==1.8.5
+langchain-google-genai==4.5.3
+# HTTP client the tools use to call the StockSense API (same package the worker uses).
+httpx2==2.16.2
