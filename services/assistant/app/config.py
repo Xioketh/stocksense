@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     db_user: str = "stocksense"
     db_password: SecretStr
     assistant_db_name: str = "stocksense_assistant"
+    # Connections shared by all requests. One chat run can use 2 at once
+    # (the thread lock holds one, the checkpointer borrows another).
+    assistant_db_pool_size: int = Field(default=10, ge=2, le=50)
 
     # ---------- Gemini (AI Studio key locally; Vertex AI in Phase E) ----------
     google_api_key: SecretStr
