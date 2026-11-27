@@ -1,53 +1,29 @@
-"""A fake StockSense API for tests, built on httpx2.MockTransport.
+"""Shared test setup for the assistant.
 
-No network: requests go to a Python function. Every request is recorded,
-so tests can check what the agent sent (and that it sent no write).
+A2 has no database or model calls yet, so tests only need settings.
+Every value is fake: tests must never call Gemini, LangSmith or the real API.
 """
 
-import httpx2
+import os
 
-from app.tools.api_client import StockSenseClient
+# Must be set BEFORE importing the app (settings are read at import time).
+os.environ["APP_ENV"] = "test"
+os.environ["LOG_LEVEL"] = "WARNING"
+os.environ["ASSISTANT_API_KEY"] = "test-assistant-key"
+os.environ["STOCKSENSE_API_URL"] = "http://stocksense-api.test"
+os.environ["STOCKSENSE_API_KEY"] = "test-api-key"
+os.environ["DB_PASSWORD"] = "test-password"
+os.environ["GOOGLE_API_KEY"] = "test-not-a-real-key"
+os.environ["LANGSMITH_TRACING"] = "false"
 
-TEST_API_URL = "http://stocksense-api.test"
-TEST_API_KEY = "test-api-key"
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.main import app  # noqa: E402
+
+TEST_ASSISTANT_KEY = "test-assistant-key"
 
 
-def product(sku: str, name: str, qty: int, threshold: int) -> dict:
-    """A product exactly as the API returns it (ProductOut)."""
-    return {
-        "id": 1,
-        "sku": sku,
-        "name": name,
-        "qty": qty,
-        "low_stock_threshold": threshold,
-        "is_low_stock": qty <= threshold,
-        "created_at": "2026-11-20T10:00:00Z",
-    }
-
-
-class FakeApi:
-    def __init__(self, routes: dict[tuple[str, str], object] | None = None) -> None:
-        # (method, path) -> (status, json body), or an exception to raise
-        self.routes = routes or {}
-        self.requests: list[httpx2.Request] = []
-
-    def _handle(self, request: httpx2.Request) -> httpx2.Response:
-        self.requests.append(request)
-        answer = self.routes.get((request.method, request.url.path))
-        if answer is None:
-            return httpx2.Response(404, json={"detail": "Not Found"})
-        if isinstance(answer, Exception):
-            raise answer
-        status, body = answer
-        return httpx2.Response(status, json=body)
-
-    def client(self) -> StockSenseClient:
-        return StockSenseClient(
-            base_url=TEST_API_URL,
-            api_key=TEST_API_KEY,
-            timeout_seconds=5,
-            transport=httpx2.MockTransport(self._handle),
-        )
-
-    def methods(self) -> list[str]:
-        return [r.method for r in self.requests]
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app)
