@@ -59,3 +59,6 @@ check: lint test   ## What CI will run
 
 reset-db:      ## DANGER: delete the local database volume and start again
 	docker compose down -v
+
+test-assistant: test-db   ## Checkpoints go to stocksense_assistant_test on db-test
+	cd $(ASSISTANT_DIR) && pytest

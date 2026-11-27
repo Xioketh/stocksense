@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.state import AgentState
+from app.agent.trimming import trim_history
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,9 @@ def make_llm_node(model: Runnable[LanguageModelInput, AIMessage]) -> Callable[[A
     def llm(state: AgentState) -> dict:
         # The system prompt is added here on every call, not stored in state,
         # so changing the prompt never needs a migration of saved threads.
-        response = model.invoke([SystemMessage(SYSTEM_PROMPT), *state["messages"]])
+        # Only recent whole turns are sent; the checkpoint keeps everything.
+        history = trim_history(state["messages"])
+        response = model.invoke([SystemMessage(SYSTEM_PROMPT), *history])
         return {"messages": [response]}
 
     return llm
