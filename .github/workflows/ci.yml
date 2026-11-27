@@ -125,7 +125,8 @@ jobs:
         run: pytest
 
       # ---------- assistant ----------
-      # No database yet; every key in its conftest is fake, so CI needs no secrets.
+      # Checkpoints go to stocksense_assistant_test on db-test (conftest creates it).
+      # Every key in its conftest is fake, so CI needs no secrets.
       - name: Install dependencies (assistant)
         working-directory: services/assistant
         run: pip install -r requirements-dev.txt

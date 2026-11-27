@@ -42,9 +42,6 @@ test-api: test-db
 test-worker: test-db
 	cd $(WORKER_DIR) && pytest
 
-test-assistant:  ## No database needed yet (A4 adds test-db here)
-	cd $(ASSISTANT_DIR) && pytest
-
 lint:          ## Check code style and common bugs (all services)
 	cd $(API_DIR) && ruff check . && ruff format --check .
 	cd $(WORKER_DIR) && ruff check . && ruff format --check .
